@@ -16,21 +16,21 @@ vm_spec = {
   },
   "worker-01" = {
     cpu = 2
-    ram = 2048
+    ram = 1024
     disks = {
       "data-01" = { size = 53687091200 }
     }
   },
   "worker-02" = {
     cpu = 2
-    ram = 2048
+    ram = 1024
     disks = {
       "data-01" = { size = 53687091200 }
     }
   },
   "worker-03" = {
     cpu = 2
-    ram = 2048
+    ram = 1024
     disks = {
       "data-01" = { size = 53687091200 }
     }

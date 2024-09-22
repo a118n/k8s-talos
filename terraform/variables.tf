@@ -31,3 +31,9 @@ variable "cilium_version" {
   description = "Version of Cilium CNI to install"
   default     = "1.16.1"
 }
+
+variable "argocd_version" {
+  type        = string
+  description = "Version of Argo CD to install"
+  default     = "7.6.0"
+}

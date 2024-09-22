@@ -40,6 +40,11 @@ data "talos_machine_configuration" "machineconfig_cp" {
             }
           }]
         }
+        kubelet = {
+          extraArgs = {
+            rotate-server-certificates = true
+          }
+        }
       }
       cluster = {
         network = {
@@ -50,6 +55,10 @@ data "talos_machine_configuration" "machineconfig_cp" {
         proxy = {
           disabled = true
         }
+        extraManifests = [
+          "https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/main/deploy/standalone-install.yaml",
+          "https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml"
+        ]
       }
     })
   ]
@@ -66,7 +75,6 @@ resource "talos_machine_configuration_apply" "cp_config_apply" {
       machine = {
         network = {
           hostname = each.key
-          # domainname = "k8s.internal"
         }
       }
     })
@@ -84,6 +92,11 @@ data "talos_machine_configuration" "machineconfig_worker" {
         install = {
           disk = "/dev/vda"
         }
+        kubelet = {
+          extraArgs = {
+            rotate-server-certificates = true
+          }
+        }
       }
       cluster = {
         network = {
@@ -99,12 +112,6 @@ data "talos_machine_configuration" "machineconfig_worker" {
   ]
 }
 
-resource "talos_machine_bootstrap" "bootstrap" {
-  depends_on           = [talos_machine_configuration_apply.cp_config_apply]
-  client_configuration = talos_machine_secrets.machine_secrets.client_configuration
-  node                 = module.k8s_cluster["control-plane-01"].vm_ip_address
-}
-
 resource "talos_machine_configuration_apply" "worker_config_apply" {
   depends_on                  = [module.k8s_cluster, talos_machine_bootstrap.bootstrap]
   for_each                    = local.workers
@@ -116,28 +123,33 @@ resource "talos_machine_configuration_apply" "worker_config_apply" {
       machine = {
         network = {
           hostname = each.key
-          # domainname = "k8s.internal"
         }
       }
     })
   ]
 }
 
-data "talos_cluster_kubeconfig" "kubeconfig" {
+resource "talos_machine_bootstrap" "bootstrap" {
+  depends_on           = [talos_machine_configuration_apply.cp_config_apply]
+  client_configuration = talos_machine_secrets.machine_secrets.client_configuration
+  node                 = module.k8s_cluster["control-plane-01"].vm_ip_address
+}
+
+resource "talos_cluster_kubeconfig" "kubeconfig" {
   depends_on           = [talos_machine_bootstrap.bootstrap]
   client_configuration = talos_machine_secrets.machine_secrets.client_configuration
   node                 = module.k8s_cluster["control-plane-01"].vm_ip_address
 }
 
 resource "local_file" "kubeconfig" {
-  depends_on      = [talos_machine_bootstrap.bootstrap]
-  content         = data.talos_cluster_kubeconfig.kubeconfig.kubeconfig_raw
+  depends_on      = [talos_cluster_kubeconfig.kubeconfig]
+  content         = talos_cluster_kubeconfig.kubeconfig.kubeconfig_raw
   filename        = pathexpand("~/.kube/config")
   file_permission = "0600"
 }
 
 resource "local_file" "talosconfig" {
-  depends_on      = [talos_machine_bootstrap.bootstrap]
+  depends_on      = [data.talos_client_configuration.talosconfig]
   content         = data.talos_client_configuration.talosconfig.talos_config
   filename        = pathexpand("~/.talos/config")
   file_permission = "0600"
