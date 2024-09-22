@@ -56,13 +56,8 @@ resource "helm_release" "cilium" {
   }
 }
 
-resource "time_sleep" "wait_2min_cilium" {
-  depends_on      = [helm_release.cilium]
-  create_duration = "2m"
-}
-
 resource "kubectl_manifest" "metallb_ns" {
-  depends_on = [time_sleep.wait_2min_cilium, local_file.kubeconfig]
+  depends_on = [helm_release.cilium, local_file.kubeconfig]
   yaml_body  = <<YAML
 apiVersion: v1
 kind: Namespace
@@ -81,6 +76,7 @@ resource "helm_release" "metallb" {
   name       = "metallb"
   chart      = "metallb"
   namespace  = "metallb"
+  version    = var.metallb_version
   set {
     name  = "speaker.frr.enabled"
     value = "false"
@@ -111,7 +107,7 @@ YAML
 }
 
 resource "kubectl_manifest" "metallb_advertisement" {
-  depends_on = [kubectl_manifest.metallb_pool, helm_release.metallb, local_file.kubeconfig]
+  depends_on = [kubectl_manifest.metallb_pool, local_file.kubeconfig]
   yaml_body  = <<YAML
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
@@ -121,13 +117,14 @@ metadata:
 YAML
 }
 
-resource "helm_release" "ingress-nginx" {
+resource "helm_release" "ingress_nginx" {
   depends_on       = [kubectl_manifest.metallb_advertisement, local_file.kubeconfig]
   repository       = "https://kubernetes.github.io/ingress-nginx"
   name             = "ingress-nginx"
   chart            = "ingress-nginx"
   namespace        = "ingress-nginx"
   create_namespace = true
+  version          = var.ingress_nginx_version
   set {
     name  = "controller.extraArgs.enable-ssl-passthrough"
     value = ""
@@ -142,8 +139,35 @@ resource "helm_release" "ingress-nginx" {
   }
 }
 
+resource "helm_release" "cert_manager" {
+  depends_on       = [helm_release.ingress_nginx, local_file.kubeconfig]
+  name             = "cert-manager"
+  repository       = "https://charts.jetstack.io"
+  chart            = "cert-manager"
+  namespace        = "cert-manager"
+  create_namespace = true
+  version          = var.cert_manager_version
+  set {
+    name  = "crds.enabled"
+    value = "true"
+  }
+}
+
+resource "kubectl_manifest" "ca" {
+  depends_on = [helm_release.cert_manager, local_file.kubeconfig]
+  yaml_body  = <<YAML
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ca-key-pair
+  namespace: cert-manager
+data:
+  tls.crt: ${base64encode(tls_self_signed_cert.talos_ca_cert.cert_pem)}
+  tls.key: ${base64encode(tls_private_key.talos_ca_private_key.private_key_pem)}
+YAML
+}
 resource "helm_release" "argocd" {
-  depends_on       = [helm_release.ingress-nginx, local_file.kubeconfig]
+  depends_on       = [kubectl_manifest.ca, local_file.kubeconfig]
   name             = "argo-cd"
   repository       = "https://argoproj.github.io/argo-helm"
   chart            = "argo-cd"

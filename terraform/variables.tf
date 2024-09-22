@@ -37,3 +37,21 @@ variable "argocd_version" {
   description = "Version of Argo CD to install"
   default     = "7.6.0"
 }
+
+variable "metallb_version" {
+  type        = string
+  description = "Version of MetalLB to install"
+  default     = "0.14.8"
+}
+
+variable "ingress_nginx_version" {
+  type        = string
+  description = "Version of Ingress NGINX to install"
+  default     = "4.11.2"
+}
+
+variable "cert_manager_version" {
+  type        = string
+  description = "Version of cert-manager to install"
+  default     = "v1.15.3"
+}
