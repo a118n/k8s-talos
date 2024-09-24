@@ -87,13 +87,13 @@ resource "helm_release" "metallb" {
   }
 }
 
-resource "time_sleep" "wait_1min_metallb" {
+resource "time_sleep" "wait_30sec_metallb" {
   depends_on      = [helm_release.metallb]
-  create_duration = "1m"
+  create_duration = "30s"
 }
 
 resource "kubectl_manifest" "metallb_pool" {
-  depends_on = [time_sleep.wait_1min_metallb, local_file.kubeconfig]
+  depends_on = [time_sleep.wait_30sec_metallb, helm_release.metallb, local_file.kubeconfig]
   yaml_body  = <<YAML
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
@@ -140,7 +140,7 @@ resource "helm_release" "ingress_nginx" {
 }
 
 resource "helm_release" "cert_manager" {
-  depends_on       = [helm_release.ingress_nginx, local_file.kubeconfig]
+  depends_on       = [helm_release.cilium, local_file.kubeconfig]
   name             = "cert-manager"
   repository       = "https://charts.jetstack.io"
   chart            = "cert-manager"
@@ -153,7 +153,7 @@ resource "helm_release" "cert_manager" {
   }
 }
 
-resource "kubectl_manifest" "ca" {
+resource "kubectl_manifest" "ca_secret" {
   depends_on = [helm_release.cert_manager, local_file.kubeconfig]
   yaml_body  = <<YAML
 apiVersion: v1
@@ -166,8 +166,23 @@ data:
   tls.key: ${base64encode(tls_private_key.talos_ca_private_key.private_key_pem)}
 YAML
 }
+
+resource "kubectl_manifest" "ca_issuer" {
+  depends_on = [kubectl_manifest.ca_secret, local_file.kubeconfig]
+  yaml_body  = <<YAML
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ca-issuer
+  namespace: cert-manager
+spec:
+  ca:
+    secretName: ca-key-pair
+YAML
+}
+
 resource "helm_release" "argocd" {
-  depends_on       = [kubectl_manifest.ca, local_file.kubeconfig]
+  depends_on       = [helm_release.cilium, local_file.kubeconfig]
   name             = "argo-cd"
   repository       = "https://argoproj.github.io/argo-helm"
   chart            = "argo-cd"
